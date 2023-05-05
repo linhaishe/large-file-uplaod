@@ -1,23 +1,47 @@
-import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React, { useState } from "react";
+import { Button } from "antd";
+import "./App.css";
+import http from "./api/http";
 
 function App() {
+  const [file, setUploadFile] = useState<File | null>(null);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 单个文件上传
+    const file: File = (e.target.files as FileList)[0];
+    if (!file) {
+      alert("请上传文件");
+    }
+    setUploadFile(file);
+  };
+
+  const handleFileUpload = () => {
+    if (!file) return;
+    let formData = new FormData();
+    formData.append("file", file);
+    formData.append("filename", file.name);
+    http
+      .post("/upload_single", formData)
+      .then((res) => {
+        console.log(res.data.code);
+        if (res.data.code === 0) {
+          alert(
+            `文件已经上传成功~,您可以基于${res.data.servicePath}访问这个资源~~^ `
+          );
+          return;
+        }
+        return Promise.reject(res.data.codeText);
+      })
+      .catch((reason) => {
+        alert("文件上传失败，请您稍后再试~~");
+      });
+  };
   return (
     <div className="App">
       <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
+        <input type={"file"} onChange={handleFileChange} />
+        <Button type="primary" onClick={handleFileUpload}>
+          Upload
+        </Button>
       </header>
     </div>
   );
