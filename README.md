@@ -140,3 +140,5 @@ readStream.on('end', () => {
 
 需要注意的是，当可读流出现错误时，会触发 'error' 事件，而不是 'end' 事件。因此，在处理可读流时，通常也需要监听 'error' 事件，以便及时处理可能出现的错误情况。
 ```
+
+https://github.com/axios/axios/blob/main/examples/upload/index.html
