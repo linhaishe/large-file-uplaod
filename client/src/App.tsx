@@ -3,12 +3,15 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Progress } from 'antd';
 import './App.css';
 import http from './api/http';
+import useFileHash from './hooks';
+import MyWorker from '../public/worker';
 
 interface fileChunks {
   chunk: Blob;
   hash: string;
   index: number;
   percentage: number;
+  fileHash?: string;
 }
 
 // 切片大小 10MB
@@ -16,7 +19,7 @@ const SIZE = 10 * 1024 * 1024;
 
 // 生成文件切片
 function createFileChunksWithHash(file: File, size = SIZE) {
-  const fileChunks = [];
+  const fileChunks: fileChunks[] = [];
   for (let cur = 0, index = 0; cur < file.size; index++) {
     const fileChunk = file.slice(cur, cur + size);
     const hash = `${file.name}-${cur / size}`;
@@ -31,6 +34,24 @@ function App() {
   const [fileChunkList, setFileChunkList] = useState<fileChunks[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
+  const [hash, setHash] = useState('');
+  const [hashPercentage, setHashPercentage] = useState(0);
+
+  // 计算所有切片的hash
+  const calculateHash = (fileChunkList: any) => {
+    return new Promise((resolve) => {
+      const worker = new Worker('../public/worker.ts');
+      worker.postMessage({ fileChunkList });
+
+      worker.onmessage = (e) => {
+        const { percentage, hash } = e.data;
+        setHashPercentage(percentage);
+        if (hash) {
+          resolve(hash);
+        }
+      };
+    });
+  };
 
   const mergeRequest = async () => {
     const rsp = await http.post(
@@ -56,6 +77,16 @@ function App() {
       alert('请上传文件');
     }
     setUploadFile(file);
+  };
+
+  const handleFileUpload = async () => {
+    if (!file) return;
+    const list = createFileChunksWithHash(file);
+    const allChunkFilesHash = await calculateHash(list);
+    list.map((x) => (x.fileHash = allChunkFilesHash as string));
+    console.log('list', list);
+
+    setFileChunkList(list);
   };
 
   const createProgressHandler = useCallback(
@@ -109,11 +140,6 @@ function App() {
     })();
   }, [fileChunkList]);
 
-  const handleFileUpload = async () => {
-    if (!file) return;
-    const list = createFileChunksWithHash(file);
-    setFileChunkList(list);
-  };
   return (
     <div className='App'>
       <header className='App-header'>

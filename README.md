@@ -142,3 +142,57 @@ readStream.on('end', () => {
 ```
 
 https://github.com/axios/axios/blob/main/examples/upload/index.html
+
+进度条没有能实时更新
+
+可以优化的地方在于，每次 render 组件时，都会重新生成 createProgressHandler 函数。这样会导致每个切片的 onUploadProgress 属性都变成了新的函数，而不是之前绑定过的函数，从而导致进度条更新的时候，会触发组件的重复渲染。
+
+为了解决这个问题，可以把 createProgressHandler 改为 useCallback，并把 fileChunkList 和 file 作为它的依赖项，这样就能够保证每个切片的 onUploadProgress 属性在组件 re-render 时，仍然是之前绑定过的函数。
+
+```js
+function createProgressHandler(index: number) {
+  return (e: any) => {
+    setFileChunkList((prevList) => {
+      const newList = [...prevList];
+      newList[index] = {
+        ...newList[index],
+        percentage: parseInt(String((e.loaded / e.total) * 100)),
+      };
+      return newList;
+    });
+  };
+}
+
+```
+
+可以优化的地方在于，每次 render 组件时，都会重新生成 createProgressHandler 函数。这样会导致每个切片的 onUploadProgress 属性都变成了新的函数，而不是之前绑定过的函数，从而导致进度条更新的时候，会触发组件的重复渲染。
+
+为了解决这个问题，可以把 createProgressHandler 改为 useCallback，并把 fileChunkList 和 file 作为它的依赖项，这样就能够保证每个切片的 onUploadProgress 属性在组件 re-render 时，仍然是之前绑定过的函数。
+
+```js
+const createProgressHandler = useCallback(
+  (index: number) => (e: any) => {
+    setFileChunkList((prevList) => {
+      const newList = [...prevList];
+      newList[index] = {
+        ...newList[index],
+        percentage: parseInt(String((e.loaded / e.total) * 100)),
+      };
+      return newList;
+    });
+  },
+  [fileChunkList, file]
+);
+
+```
+重复请求/upload_single
+
+useEffect 中发起了上传请求，并且每次 fileChunkList 变化都会触发 useEffect，导致重复请求。为了避免重复请求，可以对上传状态进行维护，在上传完成后再进行下一步操作。具体实现可以考虑引入一个上传状态（如 isUploading），在上传过程中将其设置为 true，在上传完成后再将其设置为 false，只有在 isUploading 为 false 时才能触发上传。
+
+使用 web-worker 在 worker 线程计算 hash，防止文件过大引起ui阻塞。
+
+Web Worker是一种Web API，用于在Web应用程序中创建并执行多线程JavaScript代码。它允许开发人员在不阻塞主线程的情况下，使用单独的线程来执行一些耗时操作，如大量数据的处理、计算、排序、过滤、搜索等。
+
+Web Worker能够让JavaScript代码在不阻塞UI线程的情况下运行，因为它们在后台线程中执行。这可以帮助提高Web应用程序的性能和响应性。Web Worker在一个独立的全局上下文中运行，这意味着它们不能访问主线程的变量或函数，而且它们必须通过postMessage方法来与主线程进行通信。
+
+Web Worker通常用于执行CPU密集型的任务，例如图像处理、视频编码、解码等。但需要注意的是，Web Worker并不是在所有的Web浏览器中都可用。
