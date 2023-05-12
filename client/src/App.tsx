@@ -3,15 +3,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Progress } from 'antd';
 import './App.css';
 import http from './api/http';
-import useFileHash from './hooks';
-import MyWorker from '../public/worker';
 
 interface fileChunks {
   chunk: Blob;
   hash: string;
   index: number;
   percentage: number;
-  fileHash?: string;
+  fileHash: string;
 }
 
 // 切片大小 10MB
@@ -23,7 +21,13 @@ function createFileChunksWithHash(file: File, size = SIZE) {
   for (let cur = 0, index = 0; cur < file.size; index++) {
     const fileChunk = file.slice(cur, cur + size);
     const hash = `${file.name}-${cur / size}`;
-    fileChunks.push({ chunk: fileChunk, hash, index, percentage: 0 });
+    fileChunks.push({
+      chunk: fileChunk,
+      hash,
+      index,
+      percentage: 0,
+      fileHash: '',
+    });
     cur += size;
   }
   return fileChunks;
@@ -34,13 +38,12 @@ function App() {
   const [fileChunkList, setFileChunkList] = useState<fileChunks[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
-  const [hash, setHash] = useState('');
   const [hashPercentage, setHashPercentage] = useState(0);
-
+  const workerRef = React.useRef(new Worker('worker.js'));
+  const worker = workerRef.current;
   // 计算所有切片的hash
   const calculateHash = (fileChunkList: any) => {
     return new Promise((resolve) => {
-      const worker = new Worker('../public/worker.ts');
       worker.postMessage({ fileChunkList });
 
       worker.onmessage = (e) => {
@@ -83,7 +86,9 @@ function App() {
     if (!file) return;
     const list = createFileChunksWithHash(file);
     const allChunkFilesHash = await calculateHash(list);
-    list.map((x) => (x.fileHash = allChunkFilesHash as string));
+    list.map(
+      (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
+    );
     console.log('list', list);
 
     setFileChunkList(list);
@@ -115,10 +120,11 @@ function App() {
 
       setIsUploading(true);
       const requestList = fileChunkList
-        .map(({ chunk, hash, index }) => {
+        .map(({ chunk, index, fileHash, hash }) => {
           let formData = new FormData();
           formData.append('chunk', chunk);
-          formData.append('hash', hash);
+          // formData.append('hash', hash);
+          formData.append('hash', fileHash);
           formData.append('filename', file.name);
           return { formData, index };
         })
@@ -151,7 +157,7 @@ function App() {
         {fileChunkList.map((item, index) => {
           return (
             <div className='fileChunkList' key={index}>
-              <div>{item.hash}</div>
+              <div>{item.fileHash}</div>
               <Progress percent={item.percentage} />
             </div>
           );

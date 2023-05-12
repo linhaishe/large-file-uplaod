@@ -196,3 +196,35 @@ Web Worker是一种Web API，用于在Web应用程序中创建并执行多线程
 Web Worker能够让JavaScript代码在不阻塞UI线程的情况下运行，因为它们在后台线程中执行。这可以帮助提高Web应用程序的性能和响应性。Web Worker在一个独立的全局上下文中运行，这意味着它们不能访问主线程的变量或函数，而且它们必须通过postMessage方法来与主线程进行通信。
 
 Web Worker通常用于执行CPU密集型的任务，例如图像处理、视频编码、解码等。但需要注意的是，Web Worker并不是在所有的Web浏览器中都可用。
+
+Refused to execute script from 'http://localhost:3000/worker.ts' because its MIME type ('video/mp2t') is not executable.
+
+```js
+const createFileChunksWithHash = (file: File, size = SIZE) => {
+  return new Promise((resolve) => {
+    const fileChunks: fileChunks[] = [];
+    const worker = new Worker("hash-worker.js");
+    for (let cur = 0, index = 0; cur < file.size; index++) {
+      const fileChunk = file.slice(cur, cur + size);
+      fileChunks.push({ chunk: fileChunk, index, percentage: 0 });
+      cur += size;
+    }
+    
+    worker.postMessage({ fileChunks });
+
+    worker.onmessage = (e) => {
+      const { percentage, hash } = e.data;
+      if (hash) {
+        for (const chunk of fileChunks) {
+          if (chunk.hash === hash) {
+            chunk.filehash = hash;
+          }
+        }
+        resolve(fileChunks);
+      } else {
+        setHashPercentage(percentage);
+      }
+    };
+  });
+};
+```

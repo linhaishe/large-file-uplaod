@@ -1,4 +1,4 @@
-// server index.js
+// server index.jskjh
 
 import express from 'express';
 import cors from 'cors';
@@ -71,6 +71,9 @@ const UPLOAD_DIR = path.resolve(__dirname, '..', 'temporary');
 const multiparty_upload = function multiparty_upload(req: any) {
   return new Promise(async (resolve, reject) => {
     new multiparty.Form().parse(req, async (err, fields, files) => {
+      console.log('fields', fields);
+      console.log('files', files);
+
       if (err) {
         reject(err);
         return;
@@ -79,12 +82,15 @@ const multiparty_upload = function multiparty_upload(req: any) {
       const [chunk] = files.chunk;
       const [hash] = fields.hash;
       const [filename] = fields.filename;
+      console.log('chunk', chunk);
+
+      // 切片文件夹名
       const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + filename);
 
       if (!fse.existsSync(chunkDir)) {
         await fse.mkdirs(chunkDir);
       }
-
+      // 把分片移动到对应的目录下
       await fse.move(chunk.path, `${chunkDir}/${hash}`);
       resolve({ code: 0, codeText: 'upload success' });
     });
