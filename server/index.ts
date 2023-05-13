@@ -7,9 +7,6 @@ import multiparty from 'multiparty';
 import path from 'path';
 import fse from 'fs-extra';
 
-interface MultipartyUploadConfig {
-  uploadDir: string;
-}
 const jsonParser = bodyParser.json();
 const urlencodedParser = bodyParser.urlencoded({ extended: false });
 const app = express();
@@ -20,6 +17,9 @@ app.use(cors());
 // 2. 创建需要改写的内容
 // 3.可读 pipe() 到 可写 readStream.pipe(writeStream);
 
+const UPLOAD_DIR = path.resolve(__dirname, '..', 'temporary');
+const extractExt = (filename: string) =>
+  filename.slice(filename.lastIndexOf('.'), filename.length);
 // 写入文件流
 const pipeStream = (path: any, writeStream: any) =>
   // 管道的数据传输是异步的，因此我们不能简单地在函数中使用回调函数来处理操作完成的事件。相反，我们使用 Promise 对象来表示这个异步操作的状态，并在操作完成时通过 resolve() 方法将 Promise 对象解决为一个值。
@@ -67,7 +67,6 @@ const mergeFileChunk = async (filePath: any, filename: any, size: any) => {
   fse.rmdirSync(chunkDir);
 };
 
-const UPLOAD_DIR = path.resolve(__dirname, '..', 'temporary');
 const multiparty_upload = function multiparty_upload(req: any) {
   return new Promise(async (resolve, reject) => {
     new multiparty.Form().parse(req, async (err, fields, files) => {
@@ -97,6 +96,7 @@ const multiparty_upload = function multiparty_upload(req: any) {
   });
 };
 
+// 文件上传
 app.post('/upload_single', async (req, res) => {
   try {
     await multiparty_upload(req);
@@ -112,14 +112,13 @@ app.post('/upload_single', async (req, res) => {
   }
 });
 
+// 通知是否进行文件合并
 app.post('/merge', async (req, res) => {
   try {
-    console.log('reqreqreqreq', req.body);
-    const { filename, size } = req.body || {};
+    const { filename, size, fileHash } = req.body || {};
+    const ext = extractExt(filename);
     // 是要合并的文件的最终位置
-    const filePath = path.resolve(UPLOAD_DIR, `${filename}`);
-    console.log('filePath', filePath);
-
+    const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
     await mergeFileChunk(filePath, filename, size);
     res.send({
       code: 0,
@@ -129,6 +128,33 @@ app.post('/merge', async (req, res) => {
     res.send({
       code: 1,
       message: 'file merged failed',
+    });
+  }
+});
+
+// 确认文件是否上传过(秒传)
+app.post('/verify_upload', async (req, res) => {
+  try {
+    const { fileName, fileHash } = req.body;
+    const ext = extractExt(fileName);
+    const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
+    if (fse.existsSync(filePath)) {
+      res.send({
+        code: 0,
+        shouldUpload: false,
+        message: 'has uploaded',
+      });
+    } else {
+      res.send({
+        code: 0,
+        shouldUpload: true,
+        message: 'has not uploaded',
+      });
+    }
+  } catch (error) {
+    res.send({
+      code: 1,
+      message: 'error',
     });
   }
 });

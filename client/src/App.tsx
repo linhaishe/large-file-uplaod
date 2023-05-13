@@ -35,6 +35,7 @@ function createFileChunksWithHash(file: File, size = SIZE) {
 
 function App() {
   const [file, setUploadFile] = useState<File | null>(null);
+  const [fileHash, setFileHash] = useState('');
   const [fileChunkList, setFileChunkList] = useState<fileChunks[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
@@ -62,6 +63,7 @@ function App() {
       JSON.stringify({
         size: SIZE,
         filename: file?.name,
+        fileHash,
       }),
       {
         headers: {
@@ -71,6 +73,23 @@ function App() {
     );
 
     return rsp;
+  };
+
+  const isUploaded = async (fileName: string, fileHash: string) => {
+    const { data } = await http.post(
+      '/verify_upload',
+      JSON.stringify({
+        fileName,
+        fileHash,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    return data;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,8 +103,25 @@ function App() {
 
   const handleFileUpload = async () => {
     if (!file) return;
+
+    console.log('file', file);
+
     const list = createFileChunksWithHash(file);
     const allChunkFilesHash = await calculateHash(list);
+    setFileHash(allChunkFilesHash as string);
+    // 确认是否已经上传
+    const { shouldUpload } = await isUploaded(
+      file.name,
+      allChunkFilesHash as string
+    );
+
+    console.log('shouldUpload', shouldUpload);
+
+    if (!shouldUpload) {
+      alert('上传成功');
+      return;
+    }
+
     list.map(
       (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
     );
