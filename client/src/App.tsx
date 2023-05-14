@@ -1,5 +1,5 @@
 // app.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Progress } from 'antd';
 import './App.css';
 import http from './api/http';
@@ -40,7 +40,8 @@ function App() {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
   const [hashPercentage, setHashPercentage] = useState(0);
-  const workerRef = React.useRef(new Worker('worker.js'));
+  const cancelTokenRef = useRef(http.CancelToken.source());
+  const workerRef = useRef(new Worker('worker.js'));
   const worker = workerRef.current;
   // 计算所有切片的hash
   const calculateHash = (fileChunkList: any) => {
@@ -101,11 +102,12 @@ function App() {
     setUploadFile(file);
   };
 
+  const handlePause = () => {
+    cancelTokenRef.current.cancel();
+  };
+
   const handleFileUpload = async () => {
     if (!file) return;
-
-    console.log('file', file);
-
     const list = createFileChunksWithHash(file);
     const allChunkFilesHash = await calculateHash(list);
     setFileHash(allChunkFilesHash as string);
@@ -114,19 +116,13 @@ function App() {
       file.name,
       allChunkFilesHash as string
     );
-
-    console.log('shouldUpload', shouldUpload);
-
     if (!shouldUpload) {
       alert('上传成功');
       return;
     }
-
     list.map(
       (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
     );
-    console.log('list', list);
-
     setFileChunkList(list);
   };
 
@@ -150,34 +146,43 @@ function App() {
 
   useEffect(() => {
     (async () => {
-      if (!fileChunkList.length || !file || isUploading) {
-        return;
-      }
+      try {
+        if (!fileChunkList.length || !file || isUploading) {
+          return;
+        }
 
-      setIsUploading(true);
-      const requestList = fileChunkList
-        .map(({ chunk, index, fileHash, hash }) => {
-          let formData = new FormData();
-          formData.append('chunk', chunk);
-          // formData.append('hash', hash);
-          formData.append('hash', fileHash);
-          formData.append('filename', file.name);
-          return { formData, index };
-        })
-        .map(({ formData, index }) =>
-          http.post('/upload_single', formData, {
-            onUploadProgress: createProgressHandler(index),
+        setIsUploading(true);
+        const requestList = fileChunkList
+          .map(({ chunk, index, fileHash, hash }) => {
+            let formData = new FormData();
+            formData.append('chunk', chunk);
+            formData.append('hash', fileHash);
+            formData.append('filename', file.name);
+            return { formData, index };
           })
-        );
-      console.log('fileChunkListfileChunkList', fileChunkList);
+          .map(({ formData, index }) => {
+            const config = {
+              onUploadProgress: createProgressHandler(index),
+              cancelToken: cancelTokenRef.current.token,
+            };
+            const request = http.post('/upload_single', formData, config);
+            return request;
+          });
 
-      await Promise.all(requestList);
-      const {
-        data: { code, message },
-      } = await mergeRequest();
+        await Promise.all(requestList);
+        const {
+          data: { code, message },
+        } = await mergeRequest();
 
-      if (code === 0) {
-        alert(message);
+        if (code === 0) {
+          alert(message);
+        }
+      } catch (error) {
+        if (http.isCancel(error)) {
+          console.log('请求被取消：', error);
+        } else {
+          console.error('上传文件出错：', error);
+        }
       }
     })();
   }, [fileChunkList]);
@@ -187,7 +192,10 @@ function App() {
       <header className='App-header'>
         <input type='file' onChange={handleFileChange} />
         <Button type='primary' onClick={handleFileUpload}>
-          Upload
+          上传
+        </Button>
+        <Button type='primary' onClick={handlePause}>
+          暂停
         </Button>
         <Progress percent={totalProgress} />
         {fileChunkList.map((item, index) => {
