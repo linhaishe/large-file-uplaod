@@ -37,6 +37,8 @@ function App() {
   const [file, setUploadFile] = useState<File | null>(null);
   const [fileHash, setFileHash] = useState('');
   const [fileChunkList, setFileChunkList] = useState<fileChunks[]>([]);
+  const [uploadedLists, setUploadedList] = useState<string[]>([]);
+
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
   const [hashPercentage, setHashPercentage] = useState(0);
@@ -58,13 +60,15 @@ function App() {
     });
   };
 
-  const mergeRequest = async () => {
+  const mergeRequest = async (allChunkFilesHash: string) => {
+    console.log('allChunkFilesHash', fileHash, file?.name);
+
     const rsp = await http.post(
       '/merge',
       JSON.stringify({
         size: SIZE,
         filename: file?.name,
-        fileHash,
+        fileHash: allChunkFilesHash,
       }),
       {
         headers: {
@@ -103,61 +107,106 @@ function App() {
   };
 
   const handlePause = () => {
+    setIsUploading(false);
+
     cancelTokenRef.current.cancel();
   };
 
   const handleReupload = async () => {
-    if (!file) return;
-    // 确认分片或者文件是否已经上传
-    const { shouldUpload, uploadedList, message } = await isUploaded(
-      file.name,
-      fileHash as string
-    );
+    try {
+      if (!file) return;
+      // 确认分片或者文件是否已经上传
+      console.log(
+        'file.name, fileHash as string99',
+        file.name,
+        fileHash as string
+      );
 
-    console.log('shouldUpload', shouldUpload);
-    console.log('uploadedLists', uploadedList);
-    console.log('message', message);
+      const {
+        shouldUpload,
+        uploadedList,
+        message: message1,
+      } = await isUploaded(file.name, fileHash as string);
+      setUploadedList(uploadedList);
+      console.log('uploadedLists', uploadedList);
 
-    if (!shouldUpload) {
-      alert('上传成功');
-      return;
+      if (!shouldUpload) {
+        alert(message1);
+        return;
+      }
+
+      const requestList = createRequestList(
+        fileChunkList,
+        uploadedList,
+        createProgressHandler
+        // cancelTokenRef
+      );
+      await Promise.all(requestList);
+
+      const {
+        data: { code, message },
+      } = await mergeRequest(fileHash);
+
+      console.log('data', code, message);
+
+      if (message) {
+        alert(message);
+      }
+    } catch (error) {
+      if (http.isCancel(error)) {
+        console.log('请求被取消：', error);
+      } else {
+        console.error('上传文件出错：', error);
+      }
     }
-
-    // if (uploadedLists) {
-    //   // 和原来的filelist做对比，删除原来的list里已经上传了的数据，进行数据更新
-    //   console.log('uploadedLists', uploadedLists);
-    //   console.log('fileChunkListfileChunkList', fileChunkList);
-    //   const reUploadFileChunkList = fileChunkList.filter((file) =>
-    //     uploadedLists.includes(file.fileHash)
-    //   );
-    //   setFileChunkList(reUploadFileChunkList);
-    // }
-
-    // const { uploadedList } = await verifyUpload(fileObj.file.name);
-    // uploadChunks(uploadedList);
   };
 
   const handleFileUpload = async () => {
-    if (!file) return;
-    const list = createFileChunksWithHash(file);
-    const allChunkFilesHash = await calculateHash(list);
-    setFileHash(allChunkFilesHash as string);
-    // 确认是否已经上传
-    const { shouldUpload } = await isUploaded(
-      file.name,
-      allChunkFilesHash as string
-    );
+    try {
+      if (!file) return;
+      const list = createFileChunksWithHash(file);
+      const allChunkFilesHash = await calculateHash(list);
+      setFileHash(allChunkFilesHash as string);
+      // 确认是否已经上传
+      const {
+        shouldUpload,
+        uploadedList,
+        message: message1,
+      } = await isUploaded(file.name, allChunkFilesHash as string);
+      if (!shouldUpload) {
+        alert(message1);
+        return;
+      }
+      list.map(
+        (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
+      );
+      setFileChunkList(list);
+      console.log('list', list);
 
-    console.log('shouldUpload', shouldUpload);
+      const requestList = createRequestList(
+        list,
+        uploadedLists,
+        createProgressHandler,
+        cancelTokenRef
+      );
+      await Promise.all(requestList);
 
-    if (!shouldUpload) {
-      alert('上传成功');
-      return;
+      const {
+        data: { code, message },
+      } = await mergeRequest(allChunkFilesHash as string);
+
+      console.log('data', code, message);
+
+      if (message) {
+        alert(message);
+      }
+    } catch (error) {
+      if (http.isCancel(error)) {
+        console.log('请求被取消：', error);
+      } else {
+        console.error('上传文件出错：', error);
+      }
     }
-    list.map(
-      (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
-    );
-    setFileChunkList(list);
   };
 
   const createProgressHandler = useCallback(
@@ -178,48 +227,30 @@ function App() {
     [fileChunkList, file]
   );
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!fileChunkList.length || !file || isUploading) {
-          return;
-        }
-
-        setIsUploading(true);
-        const requestList = fileChunkList
-          .map(({ chunk, index, fileHash, hash }) => {
-            let formData = new FormData();
-            formData.append('chunk', chunk);
-            formData.append('hash', fileHash);
-            formData.append('filename', file.name);
-            return { formData, index };
-          })
-          .map(({ formData, index }) => {
-            const config = {
-              onUploadProgress: createProgressHandler(index),
-              cancelToken: cancelTokenRef.current.token,
-            };
-            const request = http.post('/upload_single', formData, config);
-            return request;
-          });
-
-        await Promise.all(requestList);
-        const {
-          data: { code, message },
-        } = await mergeRequest();
-
-        if (code === 0) {
-          alert(message);
-        }
-      } catch (error) {
-        if (http.isCancel(error)) {
-          console.log('请求被取消：', error);
-        } else {
-          console.error('上传文件出错：', error);
-        }
-      }
-    })();
-  }, [fileChunkList]);
+  function createRequestList(
+    fileChunkList: any[],
+    uploadedLists: string | any[],
+    createProgressHandler: (arg0: any) => any,
+    cancelTokenRef?: { current: { token: any } }
+  ) {
+    return fileChunkList
+      .filter(({ fileHash }) => !uploadedLists.includes(fileHash))
+      .map(({ chunk, index, fileHash, hash }) => {
+        let formData = new FormData();
+        formData.append('chunk', chunk);
+        formData.append('hash', fileHash);
+        formData.append('filename', file!.name);
+        return { formData, index };
+      })
+      .map(({ formData, index }) => {
+        const config = {
+          onUploadProgress: createProgressHandler(index),
+          cancelToken: cancelTokenRef?.current.token,
+        };
+        const request = http.post('/upload_single', formData, config);
+        return request;
+      });
+  }
 
   return (
     <div className='App'>

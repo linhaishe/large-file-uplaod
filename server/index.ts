@@ -38,8 +38,12 @@ const pipeStream = (path: any, writeStream: any) =>
     readStream.pipe(writeStream);
   });
 // 合并切片
-const mergeFileChunk = async (filePath: any, filename: any, size: any) => {
-  const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + filename);
+const mergeFileChunk = async (
+  filePath: string,
+  fileHash: string,
+  size: number
+) => {
+  const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash);
   const chunkPaths = await fse.readdir(chunkDir);
   // 根据切片下标进行排序
   // 否则直接读取目录的获得的顺序会错乱
@@ -112,15 +116,21 @@ app.post('/upload_single', async (req, res) => {
     });
   }
 });
-
 // 通知是否进行文件合并
 app.post('/merge', async (req, res) => {
   try {
     const { filename, size, fileHash } = req.body || {};
+    console.log(
+      'filename, size, fileHashfilename, size, fileHash',
+      filename,
+      size,
+      fileHash
+    );
+
     const ext = extractExt(filename);
     // 是要合并的文件的最终位置
     const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
-    await mergeFileChunk(filePath, filename, size);
+    await mergeFileChunk(filePath, fileHash, size);
     res.send({
       code: 0,
       message: 'file merged success',
@@ -140,11 +150,6 @@ const createUploadedList = async (fileHash: string) => {
     'fse.existsSync(path.resolve(UPLOAD_DIR',
     fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
   );
-  console.log(
-    'fse.readdir(path.resolve(UPLOAD_DIR',
-    await fse.readdir(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
-  );
-
   return fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
     ? await fse.readdir(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
     : [];
@@ -157,7 +162,7 @@ app.post('/verify_upload', async (req, res) => {
     const ext = extractExt(fileName);
     const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
     console.log('fse.existsSync(filePath)', fse.existsSync(filePath));
-    // 文件是否已经合并
+    // 文件是否已经合并, 服务端已存在该文件，不需要再次上传
     if (fse.existsSync(filePath)) {
       res.send({
         code: 0,
@@ -165,8 +170,8 @@ app.post('/verify_upload', async (req, res) => {
         message: 'has uploaded',
       });
     } else {
+      // 服务端不存在该文件或者已上传部分文件切片，通知前端进行上传，并把已上传的文件切片返回给前端
       const uploadedList = await createUploadedList(fileHash);
-      console.log('uploadedList', uploadedList);
       res.send({
         code: 1,
         shouldUpload: true,
