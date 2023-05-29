@@ -12,8 +12,8 @@ interface fileChunks {
   fileHash: string;
 }
 
-// 切片大小 10MB
-const SIZE = 10 * 1024 * 1024;
+// 切片大小 5MB
+const SIZE = 5 * 1024 * 1024;
 
 // 生成文件切片
 function createFileChunksWithHash(file: File, size = SIZE) {
@@ -106,6 +106,37 @@ function App() {
     cancelTokenRef.current.cancel();
   };
 
+  const handleReupload = async () => {
+    if (!file) return;
+    // 确认分片或者文件是否已经上传
+    const { shouldUpload, uploadedList, message } = await isUploaded(
+      file.name,
+      fileHash as string
+    );
+
+    console.log('shouldUpload', shouldUpload);
+    console.log('uploadedLists', uploadedList);
+    console.log('message', message);
+
+    if (!shouldUpload) {
+      alert('上传成功');
+      return;
+    }
+
+    // if (uploadedLists) {
+    //   // 和原来的filelist做对比，删除原来的list里已经上传了的数据，进行数据更新
+    //   console.log('uploadedLists', uploadedLists);
+    //   console.log('fileChunkListfileChunkList', fileChunkList);
+    //   const reUploadFileChunkList = fileChunkList.filter((file) =>
+    //     uploadedLists.includes(file.fileHash)
+    //   );
+    //   setFileChunkList(reUploadFileChunkList);
+    // }
+
+    // const { uploadedList } = await verifyUpload(fileObj.file.name);
+    // uploadChunks(uploadedList);
+  };
+
   const handleFileUpload = async () => {
     if (!file) return;
     const list = createFileChunksWithHash(file);
@@ -116,6 +147,9 @@ function App() {
       file.name,
       allChunkFilesHash as string
     );
+
+    console.log('shouldUpload', shouldUpload);
+
     if (!shouldUpload) {
       alert('上传成功');
       return;
@@ -191,12 +225,17 @@ function App() {
     <div className='App'>
       <header className='App-header'>
         <input type='file' onChange={handleFileChange} />
-        <Button type='primary' onClick={handleFileUpload}>
-          上传
-        </Button>
-        <Button type='primary' onClick={handlePause}>
-          暂停
-        </Button>
+        <div className='buttonGroup'>
+          <Button type='primary' onClick={handleFileUpload}>
+            上传
+          </Button>
+          <Button type='primary' onClick={handlePause}>
+            暂停
+          </Button>
+          <Button type='primary' onClick={handleReupload}>
+            重新上传
+          </Button>
+        </div>
         <Progress percent={totalProgress} />
         {fileChunkList.map((item, index) => {
           return (

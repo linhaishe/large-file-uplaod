@@ -81,10 +81,11 @@ const multiparty_upload = function multiparty_upload(req: any) {
       const [chunk] = files.chunk;
       const [hash] = fields.hash;
       const [filename] = fields.filename;
+      const chunkFileName = hash.split('-')[0];
       console.log('chunk', chunk);
 
       // 切片文件夹名
-      const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + filename);
+      const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + chunkFileName);
 
       if (!fse.existsSync(chunkDir)) {
         await fse.mkdirs(chunkDir);
@@ -132,12 +133,31 @@ app.post('/merge', async (req, res) => {
   }
 });
 
+// 返回已上传的所有切片名
+const createUploadedList = async (fileHash: string) => {
+  console.log('fileHashfileHashfileHashfileHash', fileHash);
+  console.log(
+    'fse.existsSync(path.resolve(UPLOAD_DIR',
+    fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
+  );
+  console.log(
+    'fse.readdir(path.resolve(UPLOAD_DIR',
+    await fse.readdir(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
+  );
+
+  return fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
+    ? await fse.readdir(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
+    : [];
+};
+
 // 确认文件是否上传过(秒传)
 app.post('/verify_upload', async (req, res) => {
   try {
     const { fileName, fileHash } = req.body;
     const ext = extractExt(fileName);
     const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
+    console.log('fse.existsSync(filePath)', fse.existsSync(filePath));
+    // 文件是否已经合并
     if (fse.existsSync(filePath)) {
       res.send({
         code: 0,
@@ -145,15 +165,19 @@ app.post('/verify_upload', async (req, res) => {
         message: 'has uploaded',
       });
     } else {
+      const uploadedList = await createUploadedList(fileHash);
+      console.log('uploadedList', uploadedList);
       res.send({
-        code: 0,
+        code: 1,
         shouldUpload: true,
-        message: 'has not uploaded',
+        message: 'has not uploaded and reload',
+        uploadedList,
       });
     }
   } catch (error) {
     res.send({
-      code: 1,
+      code: 3,
+      shouldUpload: true,
       message: 'error',
     });
   }
