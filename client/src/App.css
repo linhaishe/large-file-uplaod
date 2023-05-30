@@ -1,16 +1,7 @@
 .App {
   text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+  width: 100%;
+  height: 100%;
 }
 
 .App-header {
@@ -38,11 +29,34 @@
   }
 }
 
-.fileChunkList {
+.uploadContainer {
+  width: 1200px;
+  height: 700px;
+}
+
+.chooseContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+}
+
+.totalPrograss {
+  margin-top: 10px;
+  width: 600px;
+}
+
+.fileChunkListPrograss {
   display: flex;
   align-items: center;
   justify-content: space-evenly;
-  flex-direction: column;
+  flex-direction: row;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.filePrograss {
+  width: 600px;
 }
 
 .buttonGroup {

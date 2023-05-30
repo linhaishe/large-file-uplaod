@@ -1,5 +1,3 @@
-// server index.jskjh
-
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -10,7 +8,6 @@ import fse from 'fs-extra';
 const jsonParser = bodyParser.json();
 const urlencodedParser = bodyParser.urlencoded({ extended: false });
 const app = express();
-const HOSTNAME = 'http://127.0.0.1:8888';
 app.use(express.json());
 app.use(cors());
 // 1. 读你要改变的内容
@@ -20,6 +17,7 @@ app.use(cors());
 const UPLOAD_DIR = path.resolve(__dirname, '..', 'temporary');
 const extractExt = (filename: string) =>
   filename.slice(filename.lastIndexOf('.'), filename.length);
+
 // 写入文件流
 const pipeStream = (path: any, writeStream: any) =>
   // 管道的数据传输是异步的，因此我们不能简单地在函数中使用回调函数来处理操作完成的事件。相反，我们使用 Promise 对象来表示这个异步操作的状态，并在操作完成时通过 resolve() 方法将 Promise 对象解决为一个值。
@@ -37,6 +35,7 @@ const pipeStream = (path: any, writeStream: any) =>
     });
     readStream.pipe(writeStream);
   });
+
 // 合并切片
 const mergeFileChunk = async (
   filePath: string,
@@ -50,13 +49,11 @@ const mergeFileChunk = async (
   chunkPaths.sort(
     (a, b) => parseInt(a.split('-')[1]) - parseInt(b.split('-')[1])
   );
-  console.log('chunkPaths', chunkPaths);
-
   // 并发写入文件
   await Promise.all(
     chunkPaths.map((chunkPath, index) =>
       pipeStream(
-        // chunkDir - 分片目录
+        // chunkDir - 分片目录/分片文件夹
         // chunkPath - 分片目录下的分片文件
         path.resolve(chunkDir, chunkPath),
         // 根据 size 在指定位置创建可写流
@@ -74,9 +71,6 @@ const mergeFileChunk = async (
 const multiparty_upload = function multiparty_upload(req: any) {
   return new Promise(async (resolve, reject) => {
     new multiparty.Form().parse(req, async (err, fields, files) => {
-      console.log('fields', fields);
-      console.log('files', files);
-
       if (err) {
         reject(err);
         return;
@@ -84,9 +78,7 @@ const multiparty_upload = function multiparty_upload(req: any) {
 
       const [chunk] = files.chunk;
       const [hash] = fields.hash;
-      const [filename] = fields.filename;
       const chunkFileName = hash.split('-')[0];
-      console.log('chunk', chunk);
 
       // 切片文件夹名
       const chunkDir = path.resolve(UPLOAD_DIR, 'chunkDir' + chunkFileName);
@@ -116,17 +108,11 @@ app.post('/upload_single', async (req, res) => {
     });
   }
 });
+
 // 通知是否进行文件合并
 app.post('/merge', async (req, res) => {
   try {
     const { filename, size, fileHash } = req.body || {};
-    console.log(
-      'filename, size, fileHashfilename, size, fileHash',
-      filename,
-      size,
-      fileHash
-    );
-
     const ext = extractExt(filename);
     // 是要合并的文件的最终位置
     const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
@@ -145,11 +131,6 @@ app.post('/merge', async (req, res) => {
 
 // 返回已上传的所有切片名
 const createUploadedList = async (fileHash: string) => {
-  console.log('fileHashfileHashfileHashfileHash', fileHash);
-  console.log(
-    'fse.existsSync(path.resolve(UPLOAD_DIR',
-    fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
-  );
   return fse.existsSync(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
     ? await fse.readdir(path.resolve(UPLOAD_DIR, 'chunkDir' + fileHash))
     : [];
@@ -161,7 +142,6 @@ app.post('/verify_upload', async (req, res) => {
     const { fileName, fileHash } = req.body;
     const ext = extractExt(fileName);
     const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${ext}`);
-    console.log('fse.existsSync(filePath)', fse.existsSync(filePath));
     // 文件是否已经合并, 服务端已存在该文件，不需要再次上传
     if (fse.existsSync(filePath)) {
       res.send({

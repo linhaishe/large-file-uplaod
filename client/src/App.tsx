@@ -1,5 +1,4 @@
-// app.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Button, Progress } from 'antd';
 import './App.css';
 import http from './api/http';
@@ -38,21 +37,18 @@ function App() {
   const [fileHash, setFileHash] = useState('');
   const [fileChunkList, setFileChunkList] = useState<fileChunks[]>([]);
   const [uploadedLists, setUploadedList] = useState<string[]>([]);
-
-  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [totalProgress, setTotalProgress] = useState<number>(0);
-  const [hashPercentage, setHashPercentage] = useState(0);
-  const cancelTokenRef = useRef(http.CancelToken.source());
+  const [source, setSource] = useState(http.CancelToken.source());
   const workerRef = useRef(new Worker('worker.js'));
   const worker = workerRef.current;
+
   // 计算所有切片的hash
   const calculateHash = (fileChunkList: any) => {
     return new Promise((resolve) => {
       worker.postMessage({ fileChunkList });
 
       worker.onmessage = (e) => {
-        const { percentage, hash } = e.data;
-        setHashPercentage(percentage);
+        const { hash } = e.data;
         if (hash) {
           resolve(hash);
         }
@@ -60,9 +56,8 @@ function App() {
     });
   };
 
+  // 分片上传后，触发合并请求
   const mergeRequest = async (allChunkFilesHash: string) => {
-    console.log('allChunkFilesHash', fileHash, file?.name);
-
     const rsp = await http.post(
       '/merge',
       JSON.stringify({
@@ -80,6 +75,7 @@ function App() {
     return rsp;
   };
 
+  // 确认文件是否已上传过
   const isUploaded = async (fileName: string, fileHash: string) => {
     const { data } = await http.post(
       '/verify_upload',
@@ -97,6 +93,7 @@ function App() {
     return data;
   };
 
+  // 用户选择上传文件
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // 单个文件上传
     const file: File = (e.target.files as FileList)[0];
@@ -106,30 +103,24 @@ function App() {
     setUploadFile(file);
   };
 
+  // 暂停/取消上传
   const handlePause = () => {
-    setIsUploading(false);
-
-    cancelTokenRef.current.cancel();
+    source.cancel();
+    // 处理点击取消上传后，无法再次重新上传的问题
+    setSource(http.CancelToken.source());
   };
 
+  // 重新上传
   const handleReupload = async () => {
     try {
       if (!file) return;
       // 确认分片或者文件是否已经上传
-      console.log(
-        'file.name, fileHash as string99',
-        file.name,
-        fileHash as string
-      );
-
       const {
         shouldUpload,
         uploadedList,
         message: message1,
       } = await isUploaded(file.name, fileHash as string);
       setUploadedList(uploadedList);
-      console.log('uploadedLists', uploadedList);
-
       if (!shouldUpload) {
         alert(message1);
         return;
@@ -138,16 +129,14 @@ function App() {
       const requestList = createRequestList(
         fileChunkList,
         uploadedList,
-        createProgressHandler
-        // cancelTokenRef
+        createProgressHandler,
+        source.token
       );
       await Promise.all(requestList);
 
       const {
-        data: { code, message },
+        data: { message },
       } = await mergeRequest(fileHash);
-
-      console.log('data', code, message);
 
       if (message) {
         alert(message);
@@ -161,6 +150,7 @@ function App() {
     }
   };
 
+  // 点击文件上传
   const handleFileUpload = async () => {
     try {
       if (!file) return;
@@ -168,11 +158,10 @@ function App() {
       const allChunkFilesHash = await calculateHash(list);
       setFileHash(allChunkFilesHash as string);
       // 确认是否已经上传
-      const {
-        shouldUpload,
-        uploadedList,
-        message: message1,
-      } = await isUploaded(file.name, allChunkFilesHash as string);
+      const { shouldUpload, message: message1 } = await isUploaded(
+        file.name,
+        allChunkFilesHash as string
+      );
       if (!shouldUpload) {
         alert(message1);
         return;
@@ -181,21 +170,18 @@ function App() {
         (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
       );
       setFileChunkList(list);
-      console.log('list', list);
 
       const requestList = createRequestList(
         list,
         uploadedLists,
         createProgressHandler,
-        cancelTokenRef
+        source.token
       );
       await Promise.all(requestList);
 
       const {
-        data: { code, message },
+        data: { message },
       } = await mergeRequest(allChunkFilesHash as string);
-
-      console.log('data', code, message);
 
       if (message) {
         alert(message);
@@ -209,6 +195,7 @@ function App() {
     }
   };
 
+  // 进度条处理
   const createProgressHandler = useCallback(
     (index: number) => (e: any) => {
       setFileChunkList((prevList) => {
@@ -227,12 +214,13 @@ function App() {
     [fileChunkList, file]
   );
 
-  function createRequestList(
+  // 创建文件上传请求
+  const createRequestList = (
     fileChunkList: any[],
     uploadedLists: string | any[],
     createProgressHandler: (arg0: any) => any,
-    cancelTokenRef?: { current: { token: any } }
-  ) {
+    cancelToken?: any
+  ) => {
     return fileChunkList
       .filter(({ fileHash }) => !uploadedLists.includes(fileHash))
       .map(({ chunk, index, fileHash, hash }) => {
@@ -245,37 +233,43 @@ function App() {
       .map(({ formData, index }) => {
         const config = {
           onUploadProgress: createProgressHandler(index),
-          cancelToken: cancelTokenRef?.current.token,
+          cancelToken,
         };
         const request = http.post('/upload_single', formData, config);
         return request;
       });
-  }
+  };
 
   return (
     <div className='App'>
       <header className='App-header'>
-        <input type='file' onChange={handleFileChange} />
-        <div className='buttonGroup'>
-          <Button type='primary' onClick={handleFileUpload}>
-            上传
-          </Button>
-          <Button type='primary' onClick={handlePause}>
-            暂停
-          </Button>
-          <Button type='primary' onClick={handleReupload}>
-            重新上传
-          </Button>
-        </div>
-        <Progress percent={totalProgress} />
-        {fileChunkList.map((item, index) => {
-          return (
-            <div className='fileChunkList' key={index}>
-              <div>{item.fileHash}</div>
-              <Progress percent={item.percentage} />
+        <div className='uploadContainer'>
+          <div className='chooseContainer'>
+            <input type='file' onChange={handleFileChange} />
+            <div className='buttonGroup'>
+              <Button type='primary' onClick={handleFileUpload}>
+                上传
+              </Button>
+              <Button type='primary' onClick={handlePause}>
+                暂停
+              </Button>
+              <Button type='primary' onClick={handleReupload}>
+                重新上传
+              </Button>
             </div>
-          );
-        })}
+          </div>
+          {/* 总进度条 */}
+          <Progress percent={totalProgress} className='totalPrograss' />
+          {/* 分片进度条 */}
+          {fileChunkList.map((item, index) => {
+            return (
+              <div className='fileChunkListPrograss' key={index}>
+                <div>{item.fileHash}</div>
+                <Progress percent={item.percentage} className='filePrograss' />
+              </div>
+            );
+          })}
+        </div>
       </header>
     </div>
   );
