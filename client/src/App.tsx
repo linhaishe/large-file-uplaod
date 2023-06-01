@@ -94,7 +94,7 @@ function App() {
   };
 
   // 计算所有切片的hash
-  const calculateHash = (fileChunkList: fileChunks[]) => {
+  const calculateHash = (fileChunkList: fileChunks[]): Promise<string> => {
     return new Promise((resolve) => {
       worker.postMessage({ fileChunkList });
       worker.onmessage = (e) => {
@@ -214,7 +214,7 @@ function App() {
   // 重新上传
   const handleReupload = async () => {
     if (!file) return;
-    await handleUpload(file, fileHash as string, fileChunkList, undefined);
+    await handleUpload(file, fileHash, fileChunkList, undefined);
   };
 
   // 点击文件上传
@@ -222,19 +222,12 @@ function App() {
     if (!file) return;
     const list = createFileChunksWithHash(file); // 创建文件切片
     const allChunkFilesHash = await calculateHash(list); // 计算所有切片的hash
-    list.map(
-      (x, idx) => (x.fileHash = `${allChunkFilesHash as string}-${idx}`)
-    );
+    list.map((x, idx) => (x.fileHash = `${allChunkFilesHash}-${idx}`));
 
-    setFileHash(allChunkFilesHash as string);
+    setFileHash(allChunkFilesHash);
     setFileChunkList(list);
 
-    await handleUpload(
-      file,
-      allChunkFilesHash as string,
-      list,
-      rspUploadedLists
-    );
+    await handleUpload(file, allChunkFilesHash, list, rspUploadedLists);
   };
 
   return (
